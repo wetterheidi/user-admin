@@ -43,7 +43,7 @@ if [ ! -f "$NGINX_CONF" ]; then
     cp "$APP_DIR/deploy/nginx-verwaltung.conf" "$NGINX_CONF"
     ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/$DOMAIN
     nginx -t && systemctl reload nginx
-    certbot --nginx -d "$DOMAIN"
+    certbot --nginx --redirect --non-interactive -d "$DOMAIN"
 else
     echo "nginx-Config existiert bereits – nicht überschrieben (certbot-Zeilen!)."
 fi
