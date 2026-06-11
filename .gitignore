@@ -1,0 +1,14 @@
+# Sicherungskopien der htpasswd-Datei — niemals einchecken
+backups/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/

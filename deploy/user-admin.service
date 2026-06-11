@@ -1,0 +1,15 @@
+[Unit]
+Description=Zentrale Nutzerverwaltung wetterheidi.de
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/apps/user-admin
+ExecStart=/apps/user-admin/venv/bin/python user_admin.py --host 127.0.0.1 --port 8090
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

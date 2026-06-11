@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wetterheidi.de – Nutzerverwaltung</title>
+<style>
+  :root {
+    --bg:      #0d1117;
+    --panel:   #161b22;
+    --border:  #30363d;
+    --text:    #e6edf3;
+    --muted:   #9da7b3;
+    --accent:  #ffd700;
+    --ok:      #3fb950;
+    --err:     #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 960px; margin-inline: auto;
+  }
+  h1 { font-size: 1.4em; color: var(--accent); margin: 8px 0 4px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; margin: 14px 0;
+  }
+  .panel h2 { font-size: 1.05em; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: normal; font-size: 0.9em; }
+  .uname { font-weight: bold; font-size: 1.05em; }
+  .badge {
+    background: var(--accent); color: #000; font-size: 0.75em;
+    font-weight: bold; border-radius: 10px; padding: 2px 10px; margin-left: 8px;
+    vertical-align: 2px;
+  }
+  label.tool { display: block; padding: 2px 0; cursor: pointer; white-space: nowrap; }
+  input[type="checkbox"] {
+    width: 20px; height: 20px; vertical-align: -4px;
+    margin-right: 8px; accent-color: var(--accent); cursor: pointer;
+  }
+  input[type="text"], input[type="password"] {
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; font-size: 1em; min-width: 180px;
+  }
+  button {
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 14px; font-size: 0.95em; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #000; font-weight: bold; border: none; }
+  button.danger  { color: var(--err); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #status { min-height: 1.5em; font-weight: bold; margin: 10px 0; }
+  #status.ok  { color: var(--ok); }
+  #status.err { color: var(--err); }
+  .hint { color: var(--muted); font-size: 0.85em; }
+</style>
+</head>
+<body>
+
+<h1>👥 wetterheidi.de – Nutzerverwaltung</h1>
+<p class="hint">Konten gelten für alle Anwendungen (astro, mittelwind, mwsviewer, tlogp, …).
+   Admin-Tools sind standardmäßig <b>nicht</b> freigeschaltet.</p>
+<div id="status"></div>
+
+<div class="panel">
+  <h2>Neues Konto anlegen</h2>
+  <div class="row">
+    <input type="text" id="newName" placeholder="Login-Name" autocomplete="off">
+    <input type="password" id="newPw" placeholder="Passwort (min. 8 Zeichen)" autocomplete="new-password">
+    <button id="genPw" title="Zufallspasswort erzeugen">🎲 Zufall</button>
+    <button class="primary" id="create">+ Anlegen</button>
+  </div>
+  <p class="hint">Erlaubt: Kleinbuchstaben, Ziffern, Punkt, Unterstrich, Bindestrich (2–32 Zeichen).</p>
+</div>
+
+<div class="panel">
+  <h2>Konten</h2>
+  <table>
+    <thead><tr><th>Nutzer</th><th>Admin-Tools</th><th>Aktionen</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p class="hint">Globale Administratoren haben automatisch Zugriff auf alles und
+     können hier nicht gelöscht werden.</p>
+</div>
+
+<script>
+'use strict';
+const $ = sel => document.querySelector(sel);
+let TOOLS = {};
+
+function setStatus(msg, cls) {
+  const el = $('#status');
+  el.textContent = msg;
+  el.className = cls || '';
+}
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  let body = {};
+  try { body = await r.json(); } catch (e) { /* leer */ }
+  if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+  return body;
+}
+
+async function load() {
+  setStatus('Lade…');
+  let data;
+  try {
+    data = await api('/api/state');
+  } catch (e) {
+    return setStatus('Fehler: ' + e.message, 'err');
+  }
+  TOOLS = data.tools;
+  const tbody = $('#rows');
+  tbody.innerHTML = '';
+
+  for (const u of data.users) {
+    const tr = document.createElement('tr');
+
+    const tdName = document.createElement('td');
+    tdName.innerHTML = `<span class="uname">${u.name}</span>`
+      + (u.global ? '<span class="badge">GLOBAL-ADMIN</span>' : '')
+      + (u.name === data.me ? ' <span class="hint">(Sie)</span>' : '');
+    tr.appendChild(tdName);
+
+    const tdTools = document.createElement('td');
+    if (u.global) {
+      tdTools.innerHTML = '<span class="hint">alle (implizit)</span>';
+    } else {
+      for (const [key, label] of Object.entries(TOOLS)) {
+        const lbl = document.createElement('label');
+        lbl.className = 'tool';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = u.tools.includes(key);
+        cb.onchange = async () => {
+          const tools = [...tdTools.querySelectorAll('input:checked')]
+            .map(x => x.dataset.tool);
+          try {
+            await api(`/api/users/${u.name}/tools`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tools }),
+            });
+            setStatus(`Freischaltungen für "${u.name}" gespeichert ✓`, 'ok');
+          } catch (e) {
+            setStatus('Fehler: ' + e.message, 'err');
+            load();
+          }
+        };
+        cb.dataset.tool = key;
+        lbl.appendChild(cb);
+        lbl.append(label);
+        tdTools.appendChild(lbl);
+      }
+    }
+    tr.appendChild(tdTools);
+
+    const tdAct = document.createElement('td');
+    const pwBtn = document.createElement('button');
+    pwBtn.textContent = '🔑 Passwort';
+    pwBtn.onclick = async () => {
+      const pw = prompt(`Neues Passwort für "${u.name}" (min. 8 Zeichen):`);
+      if (!pw) return;
+      try {
+        await api(`/api/users/${u.name}/password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw }),
+        });
+        setStatus(`Passwort für "${u.name}" geändert ✓`, 'ok');
+      } catch (e) { setStatus('Fehler: ' + e.message, 'err'); }
+    };
+    tdAct.appendChild(pwBtn);
+
+    if (!u.global) {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'danger';
+      delBtn.textContent = '✕ Löschen';
+      delBtn.onclick = async () => {
+        if (!confirm(`Konto "${u.name}" wirklich löschen?\n`
+                     + 'Der Zugang zu ALLEN Anwendungen erlischt sofort.')) return;
+        try {
+          await api(`/api/users/${u.name}`, { method: 'DELETE' });
+          setStatus(`Konto "${u.name}" gelöscht.`, 'ok');
+          load();
+        } catch (e) { setStatus('Fehler: ' + e.message, 'err'); }
+      };
+      tdAct.appendChild(document.createTextNode(' '));
+      tdAct.appendChild(delBtn);
+    }
+    tr.appendChild(tdAct);
+    tbody.appendChild(tr);
+  }
+  setStatus(`${data.users.length} Konten geladen.`, 'ok');
+}
+
+$('#genPw').onclick = () => {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let pw = '';
+  const rnd = new Uint32Array(14);
+  crypto.getRandomValues(rnd);
+  rnd.forEach(v => { pw += chars[v % chars.length]; });
+  const inp = $('#newPw');
+  inp.type = 'text';
+  inp.value = pw;
+  setStatus('Zufallspasswort erzeugt — notieren und dem Nutzer mitteilen!', 'ok');
+};
+
+$('#create').onclick = async () => {
+  const name = $('#newName').value.trim().toLowerCase();
+  const pw   = $('#newPw').value;
+  if (!name || !pw) return setStatus('Name und Passwort angeben.', 'err');
+  try {
+    await api('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, password: pw }),
+    });
+    setStatus(`Konto "${name}" angelegt ✓`, 'ok');
+    $('#newName').value = '';
+    $('#newPw').value = '';
+    $('#newPw').type = 'password';
+    load();
+  } catch (e) { setStatus('Fehler: ' + e.message, 'err'); }
+};
+
+load();
+</script>
+</body>
+</html>
